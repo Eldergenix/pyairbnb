@@ -7,7 +7,7 @@ Timeout: TypeAlias = int | float | tuple[int | float, int | float] | None
 DEFAULT_TIMEOUT: Timeout = 60
 
 regex_space = re.compile(r'[\s ]+')
-regx_price = re.compile(r'\d+')
+regx_price = re.compile(r'\d+(?:\.\d+)?')
 
 def remove_space(value:str):
     return regex_space.sub(' ', value.strip())
