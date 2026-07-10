@@ -15,6 +15,7 @@ async function rpc(method: string, params: Record<string, unknown> = {}): Promis
     }),
   );
   expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toContain("application/json");
   const text = await response.text();
   if (response.headers.get("Content-Type")?.includes("text/event-stream")) {
     const data = text

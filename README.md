@@ -10,6 +10,8 @@ A fast Airbnb data layer with two compatible surfaces:
 
 The remote MCP server is designed for OpenAI, ChatGPT/Codex, Anthropic Claude,
 Claude Code, and any client implementing the MCP Streamable HTTP transport.
+It uses the protocol's JSON response mode so clients do not wait on SSE stream
+buffering for ordinary tool calls.
 
 ## Performance contract
 

@@ -44,7 +44,9 @@ async function route(
     if (blocked) return blocked;
   }
   if (url.pathname === "/mcp") {
-    return createMcpHandler(createMcpServer(ctx))(request, env, ctx);
+    return createMcpHandler(createMcpServer(ctx), {
+      enableJsonResponse: true,
+    })(request, env, ctx);
   }
   if (url.pathname.startsWith("/v1/")) {
     try {

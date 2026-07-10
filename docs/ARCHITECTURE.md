@@ -14,7 +14,8 @@ flowchart LR
 
 The Worker is stateless and creates a fresh MCP server instance per request.
 This matches Cloudflare's current `createMcpHandler()` guidance and avoids a
-Durable Object hop for read-only tools.
+Durable Object hop for read-only tools. JSON response mode closes each
+Streamable HTTP request immediately and avoids intermediary SSE buffering.
 
 ## Cache strategy
 
