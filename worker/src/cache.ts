@@ -138,7 +138,7 @@ export async function readThroughCache<T>(
   const now = Date.now();
   const cached = await readEnvelope<T>(cache, request);
 
-  if (!options.requireFresh && cached && now <= cached.freshUntil) {
+  if (!options.requireFresh && cached && now < cached.freshUntil) {
     return toCachedValue(cached, "hit", now);
   }
 
