@@ -1,0 +1,36 @@
+.pyairbnb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.pyairbnb-card {
+  overflow: hidden;
+  border: 1px solid #dddddd;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  color: #222222;
+}
+
+.pyairbnb-card a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pyairbnb-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #f4f4f4;
+}
+
+.pyairbnb-card__body {
+  padding: 0.75rem;
+}
+
+.pyairbnb-card__body h3,
+.pyairbnb-card__body p {
+  margin: 0.25rem 0;
+}

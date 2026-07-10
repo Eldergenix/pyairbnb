@@ -1,30 +1,229 @@
-# Airbnb scraper in Python
+# pyairbnb
 
-## Overview
-This project is an open-source tool developed in Python for extracting product information from Airbnb. It's designed to be easy to use, making it an ideal solution for developers looking for Airbnb product data.
+A fast Airbnb data layer with two compatible surfaces:
 
-## Features
-- Extract prices, available dates, reviews, host details and others
-- Full search support with filtering by amenities and free cancellation
-- Extracts detailed product information from Airbnb
-- Implemented in Python just because it's popular
-- Easy to integrate with existing Python projects
+- A production-oriented Cloudflare Worker exposing standard MCP Streamable HTTP,
+  compact structured tool results, a portable MCP Apps listing grid, and REST
+  endpoints for React Server Components.
+- The original Python package, upgraded with connection reuse, API-key caching,
+  validated filter construction, and bounded/deadline-aware pagination options.
 
-## Legacy
-- This was a project first implemented on:[https://github.com/johnbalvin/pybnb](https://github.com/johnbalvin/pybnb) but was moved to [https://github.com/johnbalvin/pyairbnb](https://github.com/johnbalvin/pyairbnb)
-to match the name with pip name
+The remote MCP server is designed for OpenAI, ChatGPT/Codex, Anthropic Claude,
+Claude Code, and any client implementing the MCP Streamable HTTP transport.
 
-## Important
-- With the new airbnb changes, if you want to get the price from a room url you need to specify the date range
-the date range should be on the format year-month-day, if you leave the date range empty, you will get the details but not the price
-- All HTTP-facing functions accept a `timeout` argument. It defaults to 60 seconds, accepts the same values as `curl_cffi` (`int`, `float`, `(connect_timeout, read_timeout)` tuple), and can be set to `None` to disable timeouts.
+## Performance contract
 
+The fast path is cache-first and returns stale data while refreshing when Airbnb
+is slow. The service reports `cache`, `freshness`, `timing_ms`, `warnings`, and
+`partial` rather than hiding uncertainty.
 
-### Install
+Identical in-flight misses and refreshes are coalesced inside each Worker
+isolate. Cloudflare edge limits cap general traffic at 120 requests/minute and
+flexible fan-out at 20 requests/minute per caller key and colo.
+
+| Lane | Target |
+|---|---|
+| Edge-cache hit | Under 3 seconds; normally tens of milliseconds |
+| Warm live first page | Best effort under 3 seconds |
+| Forced live origin | Best effort, outside the hard latency target |
+| Flexible date fan-out | Up to six representative date combinations, searched concurrently |
+| All pages / deep enrichment | Cursor-driven; never blocks the first card grid |
+
+An unconditional live-origin guarantee is not technically honest: Airbnb can
+throttle, challenge, or change its private web API. Cached/indexed responses are
+the enforceable sub-three-second lane.
+
+## MCP tools
+
+| Tool | Purpose |
+|---|---|
+| `resolve_location` | Resolve cities, neighborhoods, landmarks, regions, or countries to Airbnb place IDs and bounds |
+| `search_stays` | Exact-date search with compact cards, filters, sorting, and cursor pagination |
+| `search_flexible_stays` | Compare bounded weekday/weekend and trip-length combinations concurrently |
+| `get_listing_quote` | Confirm exact-date availability, total/nightly price, and line items |
+| `get_listing_availability` | Read a bounded one-to-six-month calendar |
+
+`search_stays` supports human-readable location or map bounds; check-in/out;
+adults, children, infants, and pets; nightly min/max price; room/property types;
+amenities and accessibility features; free cancellation; instant book;
+superhost; minimum bedrooms/beds/bathrooms; rating/review thresholds; currency,
+language, sort, result limit, cursor, and explicit fresh-cache bypass.
+
+Stay inventory is day-based. Time-of-day filtering belongs to experiences, not
+overnight stays.
+
+## Run locally
 
 ```bash
-$ pip install pyairbnb
+npm install
+npm run cf:types
+npm run dev
 ```
+
+The health endpoint is `http://localhost:8788/health` and MCP is
+`http://localhost:8788/mcp`.
+
+```bash
+curl -X POST http://localhost:8788/v1/stays/search \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "location": "Tampa, Florida",
+    "check_in": "2026-07-17",
+    "check_out": "2026-07-19",
+    "adults": 2,
+    "pets": 1,
+    "price_max": 500,
+    "room_types": ["Entire home/apt"],
+    "sort": "price_low_to_high",
+    "limit": 12
+  }'
+```
+
+## Install in agents
+
+Replace `<worker-url>` with the deployed Worker origin.
+
+Codex:
+
+```bash
+codex mcp add pyairbnb --url https://<worker-url>/mcp
+```
+
+Claude Code:
+
+```bash
+claude mcp add --transport http --scope user pyairbnb https://<worker-url>/mcp
+```
+
+Claude and Claude Desktop: open **Settings → Connectors → Add custom
+connector**, name it `pyairbnb`, and enter `https://<worker-url>/mcp`.
+
+For an agent instruction layer, copy the included skill:
+
+```bash
+# Codex / agentskills.io hosts
+mkdir -p ~/.agents/skills
+cp -R skills/pyairbnb ~/.agents/skills/
+
+# Claude Code
+mkdir -p ~/.claude/skills
+cp -R skills/pyairbnb ~/.claude/skills/
+```
+
+### OpenAI Responses API
+
+```ts
+import OpenAI from "openai";
+
+const client = new OpenAI();
+const response = await client.responses.create({
+  model: process.env.OPENAI_MODEL!,
+  input: "Find pet-friendly entire homes in Tampa next weekend under $500/night.",
+  tools: [{
+    type: "mcp",
+    server_label: "pyairbnb",
+    server_url: "https://<worker-url>/mcp",
+    allowed_tools: ["resolve_location", "search_stays", "get_listing_quote"],
+    require_approval: "never",
+  }],
+});
+```
+
+Keep the returned `mcp_list_tools` item in conversation context so OpenAI does
+not relist tools every turn.
+
+### Anthropic Messages API
+
+```python
+import anthropic
+import os
+
+client = anthropic.Anthropic()
+response = client.beta.messages.create(
+    model=os.environ["ANTHROPIC_MODEL"],
+    max_tokens=1200,
+    messages=[{"role": "user", "content": "Find Tampa stays next weekend."}],
+    mcp_servers=[{
+        "type": "url",
+        "url": "https://<worker-url>/mcp",
+        "name": "pyairbnb",
+    }],
+    tools=[{"type": "mcp_toolset", "mcp_server_name": "pyairbnb"}],
+    betas=["mcp-client-2025-11-20"],
+)
+```
+
+## UI output
+
+- MCP clients always receive canonical `structuredContent` plus a JSON text
+  fallback, so OpenAI and Anthropic can use the same result.
+- MCP Apps-capable hosts receive `ui://pyairbnb/stays-v1.html`, served as
+  `text/html;profile=mcp-app`; the view completes the standard MCP Apps
+  handshake, host-link bridge, and resize lifecycle.
+- `integrations/rsc` contains an async React Server Component consuming the
+  REST search endpoint.
+- `integrations/openui` contains an OpenUI Lang component library plus a tested
+  `Renderer` and `toolProvider` binding for MCP clients or the REST facade.
+
+## Deploy to Cloudflare
+
+Use a least-privilege Workers API token in your shell; never place credentials
+in this repository.
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID='<account-id>'
+export CLOUDFLARE_API_TOKEN='<workers-api-token>'
+npm run check
+npm run deploy
+```
+
+`wrangler.jsonc` enables current compatibility behavior, structured Workers
+logs/traces, and local edge rate limits. The server is intentionally stateless;
+Cache API entries are keyed by canonicalized, hashed search parameters and use
+fresh/stale TTLs. It is authless by default for direct OpenAI/Anthropic
+compatibility. To require a bearer token, set the optional secret:
+
+```bash
+npx wrangler secret put PYAIRBNB_API_TOKEN
+```
+
+## Python package
+
+```bash
+pip install pyairbnb
+```
+
+All HTTP-facing functions accept a `timeout` argument. It defaults to 60
+seconds, accepts the same values as `curl_cffi` (`int`, `float`, or a connect /
+read tuple), and can be `None`. Search-all functions additionally accept
+optional `limit`, `max_pages`, and `deadline_seconds` controls without changing
+legacy unbounded behavior when those controls are omitted.
+
+With current Airbnb behavior, exact dates are required to obtain a price quote.
+Dates use `YYYY-MM-DD`.
+
+## Responsible use
+
+Airbnb's web API is private and can change without notice. Use conservative
+rates, honor applicable terms, robots directives, privacy requirements, and
+local law, and do not use this project to bypass access controls. The server
+does not automate login, CAPTCHA solving, or booking actions.
+
+## Design references
+
+- [MCP tools and structured content](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+- [Cloudflare remote MCP servers](https://developers.cloudflare.com/agents/model-context-protocol/guides/remote-mcp-server/)
+- [OpenAI Apps SDK MCP server and UI resources](https://developers.openai.com/apps-sdk/build/mcp-server)
+- [OpenAI MCP and Connectors](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+- [Anthropic MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector)
+- [OpenUI Lang](https://www.openui.com/docs/openui-lang)
+
+## Legacy
+
+This project was first implemented at
+[johnbalvin/pybnb](https://github.com/johnbalvin/pybnb), then moved to
+[johnbalvin/pyairbnb](https://github.com/johnbalvin/pyairbnb) to match the PyPI
+package name.
 ## Examples
 
 ### Example for Searching Listings

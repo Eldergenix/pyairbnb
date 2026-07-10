@@ -1,0 +1,31 @@
+.pyairbnb-openui-grid__items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.pyairbnb-openui-card {
+  overflow: hidden;
+  border: 1px solid #dddddd;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  color: #222222;
+}
+
+.pyairbnb-openui-card a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pyairbnb-openui-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #f7f7f7;
+}
+
+.pyairbnb-openui-card h3,
+.pyairbnb-openui-card p {
+  margin: 0.5rem 0.75rem;
+}

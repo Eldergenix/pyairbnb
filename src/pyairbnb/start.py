@@ -1,254 +1,118 @@
-import pyairbnb.details as details
-import pyairbnb.reviews as reviews
-import pyairbnb.price as price
-import pyairbnb.api as api
-import pyairbnb.search as search
-import pyairbnb.utils as utils
-import pyairbnb.standardize as standardize
-import pyairbnb.experience as experience
-import pyairbnb.calendarinfo as calendar
-import pyairbnb.host_details as host_details
-from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
-from datetime import datetime
+# ruff: noqa: F401
+"""Compatibility facade for pyairbnb's high-level orchestration APIs."""
+
+from collections.abc import Callable, Iterable, Mapping
+from datetime import date, datetime
+from itertools import count
+import math
+import time
 from urllib.parse import urlparse
 
-def get_calendar(api_key: str = "", room_id: str = "", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
-    """
-    Retrieves the calendar data for a specified room.
+import pyairbnb.api as api
+import pyairbnb.calendarinfo as calendar
+import pyairbnb.details as details
+import pyairbnb.experience as experience
+import pyairbnb.host_details as host_details
+import pyairbnb.listing_details as _listing_details
+import pyairbnb.price as price
+import pyairbnb.reviews as reviews
+import pyairbnb.search as search
+import pyairbnb.standardize as standardize
+import pyairbnb.stay_pagination as _stay_pagination
+import pyairbnb.utils as utils
+from pyairbnb.experience_search import (
+    search_experience_by_taking_the_first_inputs_i_dont_care,
+)
+from pyairbnb.listing_details import (
+    get_calendar,
+    get_reviews,
+    quote_date as _quote_date,
+)
+from pyairbnb.stay_pagination import DEFAULT_MAX_PAGES
+from pyairbnb.stay_search import (
+    search_all,
+    search_all_from_url,
+    search_first_page,
+)
+from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
-    Args:
-        room_id (str): The room ID.
-        api_key (str): The API key.
-        proxy_url (str): The proxy URL.
 
-    Returns:
-        dict: Calendar data.
-    """
-    if not api_key:
-        api_key = api.get(proxy_url, timeout=timeout)
+def _validate_pagination(
+    limit: int | None,
+    max_pages: int | None,
+    deadline: float | None,
+) -> None:
+    _stay_pagination.validate_pagination(limit, max_pages, deadline)
 
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    return calendar.get(api_key, room_id, current_month, current_year, proxy_url, timeout=timeout)
 
-def get_reviews(room_url: str ,language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
-    """
-    Retrieves review data for a specified product.
+def _deadline_at(deadline: float | None) -> float | None:
+    return _stay_pagination.deadline_at(deadline)
 
-    Args:
-        room_url (str): The product room_url.
-        proxy_url (str): The proxy URL.
-        language (str): The language (default is 'en').
-        currency (str): The currency (default is 'USD').
 
-    Returns:
-        dict: Reviews data.
-    """
-    data, price_input, cookies = details.get(room_url, language, proxy_url, timeout=timeout)
-    product_id = price_input["product_id"]
-    api_key = price_input["api_key"]
+def _remaining(deadline_at: float | None) -> float | None:
+    return _stay_pagination.remaining(deadline_at)
 
-    return reviews.get(api_key, product_id, "USD", language, proxy_url, timeout=timeout)
 
-def get_details(room_url: str = None, room_id: int = None, domain: str = "www.airbnb.com", check_in: str = None, check_out: str = None, adults: int = 1, currency: str = "USD", language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
-    """
-    Retrieves all details (calendar, reviews, price, and host details) for a specified room.
+def _bounded_timeout(timeout: Timeout, remaining: float | None) -> Timeout:
+    return _stay_pagination.bounded_timeout(timeout, remaining)
 
-    Args:
-        room_url (str): The room URL (optional if room_id is provided).
-        room_id (int): The room ID (optional if room_url is provided).
-        domain (str): The domain (default is 'www.airbnb.com').
-        currency (str): Currency for pricing information.
-        check_in (str): Check-in date for price information.
-        check_out (str): Check-out date for price information.
-        language (str): The language (default is 'en').
-        proxy_url (str): Proxy URL.
 
-    Returns:
-        dict: A dictionary with all room details.
-    """
-    if not room_url and room_id is None:
-        raise ValueError("Either room_url or room_id must be provided.")
-    
-    if not room_url:
-        room_url = f"https://{domain}/rooms/{room_id}"
-    
-    data, price_input, cookies = details.get(room_url, language, proxy_url, timeout=timeout)
-    product_id = price_input["product_id"]
-    api_key = price_input["api_key"]
-    
-    # Extract room_id from URL if not provided
-    if room_id is None:
-        parsed_url = urlparse(room_url)
-        path = parsed_url.path
-        room_id = path.split("/")[-1]
-    
-    # Get calendar and reviews data
-    data["reviews"] = reviews.get(api_key, product_id, currency, language, proxy_url, timeout=timeout)
-    data["calendar"] = get_calendar(api_key, room_id, proxy_url, timeout=timeout)
-    
-    # Get price data if check-in and check-out dates are provided
-    if check_in and check_out:
-        price_data = price.get(
-            room_id=str(room_id),
-            check_in=check_in,
-            check_out=check_out,
-            adults=adults,
-            currency=currency,
-            language=language,
-            impresion_id=price_input["impression_id"],
-            api_key=api_key,
-            cookies=cookies,
-            proxy_url=proxy_url,
-            timeout=timeout,
-        )
-        data["price"] = price_data
-    
-    # Get host details
-    host_id = data["host"]["id"]
-    data["host_details"] = host_details.get(api_key, cookies, host_id, language, proxy_url, timeout=timeout)
-    
-    return data
-
-def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, adults: int = 0, children: int = 0, infants: int = 0, min_bedrooms: int = 0, min_beds: int = 0, min_bathrooms: int = 0, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
-    """
-    Performs a paginated search for all rooms within specified geographic bounds.
-
-    Args:
-        check_in (str): Check-in date.
-        check_out (str): Check-out date.
-        ne_lat (float): Latitude of northeast corner.
-        ne_long (float): Longitude of northeast corner.
-        sw_lat (float): Latitude of southwest corner.
-        sw_long (float): Longitude of southwest corner.
-        zoom_value (int): Zoom level.
-        currency (str): Currency for pricing information.
-        amenities (list): List of amenity IDs to filter
-        free_cancellation (bool): Filter for listings with free cancellation
-        adults (int): Number of adults
-        children (int): Number of children
-        infants (int): Number of infants
-        min_bedrooms (int): Minimum number of bedrooms
-        min_beds (int): Minimum number of beds
-        min_bathrooms (int): Minimum number of bathrooms
-        language (str): language to use for example en,es,tr ..etc
-        proxy_url (str): Proxy URL.
-
-    Returns:
-        list: A list of all search results.
-    """
-    api_key = api.get(proxy_url, timeout=timeout)
-    all_results = []
-    cursor = ""
-    while True:
-        results_raw = search.get(
-            api_key, cursor, check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value,
-            currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash, timeout=timeout
-        )
-        paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
-        results = standardize.from_search(results_raw)
-        all_results.extend(results)
-        if not results or "nextPageCursor" not in paginationInfo or paginationInfo["nextPageCursor"] is None:
-            break
-        cursor = paginationInfo["nextPageCursor"]
-    return all_results
-
-def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, adults: int = 0, children: int = 0, infants: int = 0, min_bedrooms: int = 0, min_beds: int = 0, min_bathrooms: int = 0, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
-    """
-    Searches the first page of results within specified geographic bounds.
-
-    Args:
-        check_in (str): Check-in date.
-        check_out (str): Check-out date.
-        ne_lat (float): Latitude of northeast corner.
-        ne_long (float): Longitude of northeast corner.
-        sw_lat (float): Latitude of southwest corner.
-        sw_long (float): Longitude of southwest corner.
-        zoom_value (int): Zoom level.
-        currency (str): Currency for pricing information.
-        amenities (list): List of amenity IDs to filter
-        free_cancellation (bool): Filter for listings with free cancellation
-        adults (int): Number of adults
-        children (int): Number of children
-        infants (int): Number of infants
-        min_bedrooms (int): Minimum number of bedrooms
-        min_beds (int): Minimum number of beds
-        min_bathrooms (int): Minimum number of bathrooms
-        language (str): language to use for example en,es,tr ..etc
-        proxy_url (str): Proxy URL.
-
-    Returns:
-        list: A list of search results from the first page.
-    """
-    api_key = api.get(proxy_url, timeout=timeout)
-    results_raw = search.get(
-        api_key, "", check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value,
-        currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash=hash, timeout=timeout
+def _paginate_stays(
+    fetch_page: Callable[[str, float | None], dict],
+    *, limit: int | None, max_pages: int | None,
+    deadline_at: float | None,
+) -> list:
+    return _stay_pagination.paginate_stays(
+        fetch_page,
+        limit=limit,
+        max_pages=max_pages,
+        deadline_timestamp=deadline_at,
     )
 
-    results = standardize.from_search(results_raw)
-    return results
+
+def _search_with_raw_params(
+    raw_params: list[dict[str, list[str]]], *, currency: str,
+    language: str, proxy_url: str, hash: str, timeout: Timeout,
+    api_key: str, limit: int | None, max_pages: int | None,
+    deadline: float | None,
+) -> list:
+    return _stay_pagination.search_with_raw_params(
+        raw_params,
+        currency=currency,
+        language=language,
+        proxy_url=proxy_url,
+        hash=hash,
+        timeout=timeout,
+        api_key=api_key,
+        limit=limit,
+        max_pages=max_pages,
+        deadline=deadline,
+    )
 
 
-def search_experience_by_taking_the_first_inputs_i_dont_care(user_input_text: str, currency:str, locale: str, check_in:str, check_out:str, api_key:str, proxy_url:str, timeout: Timeout = DEFAULT_TIMEOUT):
-    markets_data = search.get_markets(currency,locale,api_key,proxy_url, timeout=timeout)
-    markets = utils.get_nested_value(markets_data,"user_markets", [])
-    if len(markets)==0:
-        raise Exception("markets are empty")
-    config_token = utils.get_nested_value(markets[0],"satori_parameters", "")
-    country_code = utils.get_nested_value(markets[0],"country_code", "")
-    if config_token=="" or country_code=="":
-        raise Exception("config_token or country_code are empty")
-    place_ids_results = search.get_places_ids(country_code, user_input_text, currency, locale, config_token, api_key, proxy_url, timeout=timeout)
-    if len(place_ids_results)==0:
-        raise Exception("empty places ids")
-    place_id = utils.get_nested_value(place_ids_results[0],"location.google_place_id", "")
-    location_name = utils.get_nested_value(place_ids_results[0],"location.location_name", "")
-    if place_id=="" or location_name=="":
-        raise Exception("place_id or location_name are empty")
-    [result,cursor] = experience.search_by_place_id("", place_id, location_name, currency, locale, check_in, check_out, api_key, proxy_url, timeout=timeout)
-    while cursor!="":
-        [result_tmp,cursor] = experience.search_by_place_id(cursor, place_id, location_name, currency, locale, check_in, check_out, api_key, proxy_url, timeout=timeout)
-        if len(result_tmp)==0:
-            break
-        result = result + result_tmp
-    return result
-
-def search_all_from_url(url: str, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
-    """
-    Parses an Airbnb search URL and forwards all recognizable filters to
-    Airbnb's StaysSearch API. The URL is the source of truth: any URL
-    parameter (known or unknown) is passed through.
-    """
-    raw_params = search.url_to_raw_params(url)
-    api_key = api.get(proxy_url)
-    all_results = []
-    cursor = ""
-    # search.get's structured-args are ignored when raw_params is supplied,
-    # but they're still required by the signature. Pass them by name so this
-    # call doesn't break if their positional order ever changes.
-    call_kwargs = {
-        "currency": currency, "language": language,
-        "proxy_url": proxy_url, "hash": hash,
-        "raw_params": raw_params,
-        "check_in": None, "check_out": None,
-        "ne_lat": 0, "ne_long": 0, "sw_lat": 0, "sw_long": 0,
-        "zoom_value": 0, "place_type": "",
-        "price_min": 0, "price_max": 0, "amenities": [],
-        "free_cancellation": False,
-        "adults": 0, "children": 0, "infants": 0,
-        "min_bedrooms": 0, "min_beds": 0, "min_bathrooms": 0,
-    }
-    while True:
-        results_raw = search.get(api_key=api_key, cursor=cursor, timeout=timeout, **call_kwargs)
-        paginationInfo = utils.get_nested_value(
-            results_raw, "data.presentation.staysSearch.results.paginationInfo", {}
-        )
-        results = standardize.from_search(results_raw)
-        all_results.extend(results)
-        if not results or not paginationInfo.get("nextPageCursor"):
-            break
-        cursor = paginationInfo["nextPageCursor"]
-    return all_results
+def get_details(
+    room_url: str | None = None,
+    room_id: int | None = None,
+    domain: str = "www.airbnb.com",
+    check_in: str | date | datetime | None = None,
+    check_out: str | date | datetime | None = None,
+    adults: int = 1,
+    currency: str = "USD",
+    language: str = "en",
+    proxy_url: str = "",
+    timeout: Timeout = DEFAULT_TIMEOUT,
+):
+    """Return listing metadata enriched with reviews, calendar, and quote."""
+    return _listing_details.get_details(
+        room_url=room_url,
+        room_id=room_id,
+        domain=domain,
+        check_in=check_in,
+        check_out=check_out,
+        adults=adults,
+        currency=currency,
+        language=language,
+        proxy_url=proxy_url,
+        timeout=timeout,
+        calendar_getter=get_calendar,
+    )

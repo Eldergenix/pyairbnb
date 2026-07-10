@@ -1,6 +1,13 @@
 *pyairbnb.egg-info
 *dist
 __pycache__
+.pytest_cache/
+.venv/
+node_modules/
+.wrangler/
+.dev.vars
+.env
+coverage/
 
 # Pycharm
 .idea
