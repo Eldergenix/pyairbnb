@@ -6,6 +6,7 @@ import type {
   SearchResult,
   SearchStaysInput,
 } from "../schemas.js";
+import { computeFacets } from "./facets.js";
 import { resolveSearchLocation } from "./location.js";
 import { searchStays } from "./search.js";
 import { sortListings } from "./search-normalize.js";
@@ -192,6 +193,7 @@ function summarizeFlexibleSearch(
       : new Date().toISOString();
   return {
     listings,
+    facets: computeFacets(listings, input.currency),
     searched_date_ranges: ranges,
     total_returned: listings.length,
     timing_ms: Math.round((performance.now() - startedAt) * 10) / 10,
@@ -221,6 +223,7 @@ export async function searchFlexibleStays(
     check_in: ranges[0]?.check_in ?? input.earliest_check_in,
     check_out: ranges[0]?.check_out ?? input.earliest_check_in,
     cursor: undefined,
+    prewarm: false,
   };
   const location = await resolveSearchLocation(probe, ctx);
   const calls = ranges.map((range) =>
@@ -232,6 +235,7 @@ export async function searchFlexibleStays(
         place_id: location.placeId,
         bounds: location.bounds,
         cursor: undefined,
+        prewarm: false,
       },
       ctx,
     ),

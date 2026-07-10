@@ -12,12 +12,14 @@ import {
   fetchJson,
   withApiKeyRetry,
 } from "./client.js";
+import { computeFacets } from "./facets.js";
 import { resolveSearchLocation } from "./location.js";
 import { array, path, record, string } from "./payload.js";
 import {
   hasPersistedQueryError,
   refreshStaysSearchOperationId,
 } from "./operation-id.js";
+import { prewarmTopQuotes } from "./prewarm.js";
 import {
   appliedFilters,
   buildSearchFilters,
@@ -159,6 +161,8 @@ export async function searchStays(
   const cacheKey = {
     ...input,
     require_fresh: undefined,
+    detail_level: undefined,
+    prewarm: undefined,
     resolved_location: location,
   };
   const cached = await readThroughCache({
@@ -167,9 +171,14 @@ export async function searchStays(
     freshTtlSeconds: 5 * 60,
     staleTtlSeconds: 60 * 60,
     requireFresh: input.require_fresh,
+    negativeTtlSeconds: 30,
     ctx,
     load: () => loadSearchPage(input, location, ctx),
   });
+  const listings = cached.value.listings;
+  if (input.prewarm && cached.status !== "hit") {
+    prewarmTopQuotes(listings, input, ctx);
+  }
   return {
     query: {
       location: cached.value.locationLabel,
@@ -177,9 +186,10 @@ export async function searchStays(
       check_out: input.check_out,
       currency: input.currency,
     },
-    listings: cached.value.listings,
+    listings,
+    facets: computeFacets(listings, input.currency),
     next_cursor: cached.value.nextCursor,
-    total_returned: cached.value.listings.length,
+    total_returned: listings.length,
     cache: cached.status,
     freshness: {
       fetched_at: cached.fetchedAt,

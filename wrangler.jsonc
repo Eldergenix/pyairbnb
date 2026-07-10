@@ -6,6 +6,18 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
+  "kv_namespaces": [
+    {
+      "binding": "CACHE_KV",
+      "id": "60f6246ddc4245e087eff85b3c2b8027"
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "METRICS",
+      "dataset": "pyairbnb_metrics"
+    }
+  ],
   "ratelimits": [
     {
       "name": "MCP_RATE_LIMITER",

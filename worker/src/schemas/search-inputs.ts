@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { boundsSchema, isoDate, roomTypeSchema, sortSchema } from "./common.js";
+import {
+  boundsSchema,
+  detailLevelSchema,
+  isoDate,
+  roomTypeSchema,
+  sortSchema,
+} from "./common.js";
 
 export const searchStaysInputShape = {
   location: z
@@ -60,6 +66,13 @@ export const searchStaysInputShape = {
     .boolean()
     .default(false)
     .describe("Bypass a stale cache entry; live-origin latency is best effort"),
+  detail_level: detailLevelSchema,
+  prewarm: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Warm the price-quote cache for the top results in the background so a follow-up get_listing_quote is a cache hit",
+    ),
 };
 
 function addSearchIssues(
@@ -134,6 +147,7 @@ export const searchFlexibleStaysInputShape = {
   sort: searchStaysInputShape.sort,
   limit: z.number().int().min(1).max(50).default(20),
   require_fresh: searchStaysInputShape.require_fresh,
+  detail_level: detailLevelSchema,
 };
 
 export const searchFlexibleStaysInputSchema = z

@@ -33,6 +33,54 @@ export function toNonnegativeInteger(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Depth-first search for the first value stored under `key` anywhere in a
+ * nested structure. Airbnb PDP section shapes vary by layout, so tolerant
+ * key-based extraction is more robust than hard-coding section paths.
+ */
+export function deepFind(value: unknown, key: string): unknown {
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (Array.isArray(current)) {
+      for (const item of current) stack.push(item);
+    } else {
+      const currentRecord = record(current);
+      if (currentRecord) {
+        if (key in currentRecord && currentRecord[key] !== null) {
+          return currentRecord[key];
+        }
+        for (const child of Object.values(currentRecord)) stack.push(child);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Depth-first search for the first record that contains every key in `keys`.
+ * Useful for locating a specific PDP sub-object (e.g. the host card) without
+ * knowing its exact section path.
+ */
+export function deepFindRecordWith(
+  value: unknown,
+  keys: readonly string[],
+): Record<string, unknown> | null {
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (Array.isArray(current)) {
+      for (const item of current) stack.push(item);
+      continue;
+    }
+    const currentRecord = record(current);
+    if (!currentRecord) continue;
+    if (keys.every((key) => key in currentRecord)) return currentRecord;
+    for (const child of Object.values(currentRecord)) stack.push(child);
+  }
+  return null;
+}
+
 export function parseDisplayNumber(value: string): number | null {
   const match = value.match(/-?[\d\s.,]+/);
   if (!match) return null;

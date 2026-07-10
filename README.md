@@ -19,9 +19,16 @@ The fast path is cache-first and returns stale data while refreshing when Airbnb
 is slow. The service reports `cache`, `freshness`, `timing_ms`, `warnings`, and
 `partial` rather than hiding uncertainty.
 
-Identical in-flight misses and refreshes are coalesced inside each Worker
-isolate. Cloudflare edge limits cap general traffic at 120 requests/minute and
-flexible fan-out at 20 requests/minute per caller key and colo.
+Caching is two-tier: a per-colo Cache API L1 backed by a globally replicated KV
+L2, so a query warmed in one region serves warm in another. Identical in-flight
+misses and refreshes are coalesced inside each Worker isolate, transient upstream
+failures are negatively cached for a short window so retries fail fast, and each
+`search_stays` speculatively warms the price-quote cache for its top results so a
+follow-up `get_listing_quote` or `compare_listings` is a cache hit. Per-request
+cache status and timing are written to an Analytics Engine dataset
+(`pyairbnb_metrics`) for hit-rate and latency dashboards. Cloudflare edge limits
+cap general traffic at 120 requests/minute and fan-out (flexible/multi-search) at
+20 requests/minute per caller key and colo.
 
 | Lane | Target |
 |---|---|
@@ -40,8 +47,13 @@ the enforceable sub-three-second lane.
 | Tool | Purpose |
 |---|---|
 | `resolve_location` | Resolve cities, neighborhoods, landmarks, regions, or countries to Airbnb place IDs and bounds |
-| `search_stays` | Exact-date search with compact cards, filters, sorting, and cursor pagination |
+| `search_stays` | Exact-date search with compact cards, a result-set facets summary, filters, sorting, and cursor pagination |
 | `search_flexible_stays` | Compare bounded weekday/weekend and trip-length combinations concurrently |
+| `multi_search` | Search up to five locations concurrently and merge into one ranked, de-duplicated card list |
+| `compare_listings` | Price two to eight listings for the same dates in one call and pick the cheapest available |
+| `get_listing_details` | Full listing: description, amenities by category, house rules, host, coordinates, and photos |
+| `get_listing_reviews` | Recent guest reviews with reviewer, date, rating, text, and category breakdown |
+| `get_host_listings` | A host's other active listings by numeric host ID |
 | `get_listing_quote` | Confirm exact-date availability, total/nightly price, and line items |
 | `get_listing_availability` | Read a bounded one-to-six-month calendar |
 
@@ -49,7 +61,11 @@ the enforceable sub-three-second lane.
 adults, children, infants, and pets; nightly min/max price; room/property types;
 amenities and accessibility features; free cancellation; instant book;
 superhost; minimum bedrooms/beds/bathrooms; rating/review thresholds; currency,
-language, sort, result limit, cursor, and explicit fresh-cache bypass.
+language, sort, result limit, cursor, and explicit fresh-cache bypass. Every
+search also returns a `facets` block (price percentiles, rating average, guest-
+favorite count, top badges) so an agent can describe the whole set without
+paginating, and a `detail_level` (`compact`/`standard`/`full`) that shrinks the
+text payload the model reads while the widget/RSC keep the canonical data.
 
 Stay inventory is day-based. Time-of-day filtering belongs to experiences, not
 overnight stays.

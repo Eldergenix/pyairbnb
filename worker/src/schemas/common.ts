@@ -52,6 +52,37 @@ export const sortSchema = z.enum([
   "rating",
 ]);
 
+export const detailLevelSchema = z
+  .enum(["compact", "standard", "full"])
+  .default("standard")
+  .describe(
+    "Controls the text payload the model reads: compact is smallest, full adds facets. The widget/RSC always receive the canonical structuredContent.",
+  );
+
+export const searchFacetsSchema = z.object({
+  count: z.number().int().nonnegative(),
+  price: z.object({
+    currency: z.string(),
+    basis: z.literal("nightly"),
+    counted: z.number().int().nonnegative(),
+    min: z.number().nullable(),
+    p25: z.number().nullable(),
+    median: z.number().nullable(),
+    p75: z.number().nullable(),
+    max: z.number().nullable(),
+  }),
+  rating: z.object({
+    counted: z.number().int().nonnegative(),
+    average: z.number().nullable(),
+  }),
+  guest_favorites: z.number().int().nonnegative(),
+  top_badges: z.array(
+    z.object({ label: z.string(), count: z.number().int().positive() }),
+  ),
+});
+
+export type SearchFacets = z.infer<typeof searchFacetsSchema>;
+
 export const locationCandidateSchema = z.object({
   name: z.string(),
   display_name: z.string(),

@@ -1,6 +1,11 @@
 import {
+  compareListings,
   getAvailability,
+  getHostListings,
+  getListingDetails,
   getListingQuote,
+  getListingReviews,
+  multiSearch,
   resolveLocation,
   searchFlexibleStays,
   searchStays,
@@ -9,11 +14,19 @@ import { PUBLIC_HEADERS } from "./constants.js";
 import { classifyPublicError, RequestError } from "./errors.js";
 import {
   availabilityInputSchema,
+  compareListingsInputSchema,
+  detailsInputSchema,
+  hostListingsInputSchema,
+  multiSearchInputSchema,
   quoteInputSchema,
   resolveLocationInputSchema,
+  reviewsInputSchema,
   searchFlexibleStaysInputSchema,
   searchStaysInputSchema,
 } from "./schemas.js";
+
+const FANOUT_TOOLS = new Set(["search_flexible_stays", "multi_search"]);
+const FANOUT_PATHS = new Set(["/v1/stays/flexible", "/v1/stays/multi"]);
 
 type RuntimeEnv = Env & { PYAIRBNB_API_TOKEN?: string };
 
@@ -77,7 +90,7 @@ async function requestActorKey(request: Request): Promise<string> {
 }
 
 async function isFlexibleCall(request: Request, pathname: string): Promise<boolean> {
-  if (pathname === "/v1/stays/flexible") return true;
+  if (FANOUT_PATHS.has(pathname)) return true;
   if (pathname !== "/mcp" || request.method !== "POST") return false;
   try {
     const body = await request.clone().json<unknown>();
@@ -89,7 +102,9 @@ async function isFlexibleCall(request: Request, pathname: string): Promise<boole
       params !== null &&
       typeof params === "object" &&
       !Array.isArray(params) &&
-      (params as Record<string, unknown>).name === "search_flexible_stays"
+      FANOUT_TOOLS.has(
+        (params as Record<string, unknown>).name as string,
+      )
     );
   } catch {
     return false;
@@ -136,11 +151,26 @@ export async function handleRest(
   if (pathname === "/v1/stays/flexible") {
     return json(await searchFlexibleStays(searchFlexibleStaysInputSchema.parse(body), ctx));
   }
+  if (pathname === "/v1/stays/multi") {
+    return json(await multiSearch(multiSearchInputSchema.parse(body), ctx));
+  }
+  if (pathname === "/v1/listings/compare") {
+    return json(await compareListings(compareListingsInputSchema.parse(body), ctx));
+  }
   if (pathname === "/v1/listings/quote") {
     return json(await getListingQuote(quoteInputSchema.parse(body), ctx));
   }
   if (pathname === "/v1/listings/availability") {
     return json(await getAvailability(availabilityInputSchema.parse(body), ctx));
+  }
+  if (pathname === "/v1/listings/details") {
+    return json(await getListingDetails(detailsInputSchema.parse(body), ctx));
+  }
+  if (pathname === "/v1/listings/reviews") {
+    return json(await getListingReviews(reviewsInputSchema.parse(body), ctx));
+  }
+  if (pathname === "/v1/hosts/listings") {
+    return json(await getHostListings(hostListingsInputSchema.parse(body), ctx));
   }
   return json({ error: "not_found" }, { status: 404 });
 }

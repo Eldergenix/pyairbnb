@@ -1,10 +1,19 @@
+import { UpstreamError } from "./errors.js";
+
 export type CacheStatus = "hit" | "miss" | "stale" | "bypass";
+
+interface NegativeMarker {
+  code: string;
+  message: string;
+  status: number;
+}
 
 interface CacheEnvelope<T> {
   value: T;
   fetchedAt: string;
   freshUntil: number;
   staleUntil: number;
+  error?: NegativeMarker | null;
 }
 
 export interface CachedValue<T> {
@@ -23,6 +32,13 @@ interface ReadThroughOptions<T> {
   requireFresh: boolean;
   ctx: ExecutionContext;
   load: () => Promise<T>;
+  /**
+   * When set, a transient UpstreamError from `load()` is cached for this many
+   * seconds so repeated identical calls fail fast instead of each paying the
+   * full origin timeout. Only UpstreamErrors are cached; client/validation
+   * errors always propagate.
+   */
+  negativeTtlSeconds?: number;
 }
 
 const inFlightLoads = new Map<string, Promise<unknown>>();
@@ -113,6 +129,89 @@ async function writeEnvelope<T>(
   );
 }
 
+// Bindings are deployment-stable, so capturing them once at request entry is
+// safe across the concurrent requests an isolate serves.
+let l2Cache: KVNamespace | null = null;
+let metrics: AnalyticsEngineDataset | null = null;
+
+export function configureCacheBindings(
+  kv: KVNamespace | undefined,
+  ae: AnalyticsEngineDataset | undefined,
+): void {
+  l2Cache = kv ?? null;
+  metrics = ae ?? null;
+}
+
+function kvKey(request: Request): string {
+  return new URL(request.url).pathname.slice(1);
+}
+
+function recordCacheMetric(
+  namespace: string,
+  status: CacheStatus,
+  ageSeconds: number,
+): void {
+  if (!metrics) return;
+  try {
+    metrics.writeDataPoint({
+      indexes: [namespace],
+      blobs: [namespace, status],
+      doubles: [status === "hit" ? 1 : 0, ageSeconds],
+    });
+  } catch {
+    // Metrics are best-effort and must never affect a response.
+  }
+}
+
+/**
+ * Read the freshest available envelope: the per-colo Cache API first, then the
+ * global KV L2. A KV hit backfills the colo cache so later same-colo reads stay
+ * local.
+ */
+async function readAnyEnvelope<T>(
+  cache: Cache,
+  request: Request,
+  ctx: ExecutionContext,
+): Promise<CacheEnvelope<T> | null> {
+  const local = await readEnvelope<T>(cache, request);
+  if (local || !l2Cache) return local;
+  const remote = await l2Cache
+    .get(kvKey(request), "json")
+    .catch(() => null);
+  if (!isCacheEnvelope(remote)) return null;
+  const envelope = remote as CacheEnvelope<T>;
+  const ttl = Math.ceil((envelope.staleUntil - Date.now()) / 1000);
+  if (ttl > 0) {
+    ctx.waitUntil(
+      writeEnvelope(cache, request, envelope, ttl).catch(() => undefined),
+    );
+  }
+  return envelope;
+}
+
+/**
+ * Persist a fresh envelope to both cache tiers. KV enforces a 60s minimum TTL,
+ * so short-lived entries are colo-only.
+ */
+function persistEnvelope<T>(
+  cache: Cache,
+  request: Request,
+  envelope: CacheEnvelope<T>,
+  staleTtlSeconds: number,
+  ctx: ExecutionContext,
+): Promise<void> {
+  if (l2Cache && staleTtlSeconds >= 60) {
+    ctx.waitUntil(
+      l2Cache
+        .put(kvKey(request), JSON.stringify(envelope), {
+          expirationTtl: staleTtlSeconds,
+        })
+        .catch(() => undefined),
+    );
+  }
+  return writeEnvelope(cache, request, envelope, staleTtlSeconds);
+}
+
 function toCachedValue<T>(
   envelope: CacheEnvelope<T>,
   status: CacheStatus,
@@ -130,13 +229,48 @@ function toCachedValue<T>(
   };
 }
 
+async function writeNegative(
+  cache: Cache,
+  request: Request,
+  marker: NegativeMarker,
+  negativeTtlSeconds: number,
+): Promise<void> {
+  const now = Date.now();
+  const envelope: CacheEnvelope<null> = {
+    value: null,
+    fetchedAt: new Date(now).toISOString(),
+    freshUntil: now + negativeTtlSeconds * 1000,
+    staleUntil: now + negativeTtlSeconds * 1000,
+    error: marker,
+  };
+  await writeEnvelope(cache, request, envelope, negativeTtlSeconds);
+}
+
 export async function readThroughCache<T>(
+  options: ReadThroughOptions<T>,
+): Promise<CachedValue<T>> {
+  const result = await readThroughCacheInner(options);
+  recordCacheMetric(options.namespace, result.status, result.ageSeconds);
+  return result;
+}
+
+async function readThroughCacheInner<T>(
   options: ReadThroughOptions<T>,
 ): Promise<CachedValue<T>> {
   const cache = caches.default;
   const request = await canonicalCacheRequest(options.namespace, options.key);
   const now = Date.now();
-  const cached = await readEnvelope<T>(cache, request);
+  const stored = await readAnyEnvelope<T>(cache, request, options.ctx);
+
+  // A cached transient failure fails fast until its short window elapses.
+  if (stored?.error && !options.requireFresh && now < stored.freshUntil) {
+    throw new UpstreamError(
+      stored.error.code,
+      stored.error.message,
+      stored.error.status,
+    );
+  }
+  const cached = stored && !stored.error ? stored : null;
 
   if (!options.requireFresh && cached && now < cached.freshUntil) {
     return toCachedValue(cached, "hit", now);
@@ -152,7 +286,13 @@ export async function readThroughCache<T>(
         freshUntil: refreshedAt + options.freshTtlSeconds * 1000,
         staleUntil: refreshedAt + options.staleTtlSeconds * 1000,
       };
-      await writeEnvelope(cache, request, envelope, options.staleTtlSeconds);
+      await persistEnvelope(
+        cache,
+        request,
+        envelope,
+        options.staleTtlSeconds,
+        options.ctx,
+      );
       return envelope;
     }).catch((error: unknown) => {
       console.error(
@@ -177,11 +317,12 @@ export async function readThroughCache<T>(
         freshUntil: loadedAt + options.freshTtlSeconds * 1000,
         staleUntil: loadedAt + options.staleTtlSeconds * 1000,
       };
-      await writeEnvelope(
+      await persistEnvelope(
         cache,
         request,
         loadedEnvelope,
         options.staleTtlSeconds,
+        options.ctx,
       );
       return loadedEnvelope;
     });
@@ -194,6 +335,20 @@ export async function readThroughCache<T>(
   } catch (error) {
     if (cached && now <= cached.staleUntil) {
       return toCachedValue(cached, "stale", now);
+    }
+    if (options.negativeTtlSeconds && error instanceof UpstreamError) {
+      options.ctx.waitUntil(
+        writeNegative(
+          cache,
+          request,
+          {
+            code: error.code,
+            message: error.message,
+            status: error.status,
+          },
+          options.negativeTtlSeconds,
+        ).catch(() => undefined),
+      );
     }
     throw error;
   }
