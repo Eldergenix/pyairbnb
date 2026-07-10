@@ -35,7 +35,7 @@ one. Do not place it in an agent prompt or repository file.
 ## Verification gates
 
 ```bash
-curl -fsS https://<worker-host>/health
+curl -fsS https://pyairbnb-mcp.nexisfoundation.workers.dev/health
 npx wrangler deployments list
 ```
 

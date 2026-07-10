@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pyairbnb": {
+      "type": "http",
+      "url": "https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp"
+    }
+  }
+}

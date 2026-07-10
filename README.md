@@ -83,26 +83,37 @@ curl -X POST http://localhost:8788/v1/stays/search \
 
 ## Install in agents
 
-Replace `<worker-url>` with the deployed Worker origin.
+Public deployment:
+
+- Origin: `https://pyairbnb-mcp.nexisfoundation.workers.dev`
+- MCP: `https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp`
+- Health: `https://pyairbnb-mcp.nexisfoundation.workers.dev/health`
 
 Codex:
 
 ```bash
-codex mcp add pyairbnb --url https://<worker-url>/mcp
+codex mcp add pyairbnb --url https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp
 ```
 
 Claude Code:
 
 ```bash
-claude mcp add --transport http --scope user pyairbnb https://<worker-url>/mcp
+claude mcp add --transport http --scope user pyairbnb https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp
 ```
 
 Claude and Claude Desktop: open **Settings → Connectors → Add custom
-connector**, name it `pyairbnb`, and enter `https://<worker-url>/mcp`.
+connector**, name it `pyairbnb`, and enter
+`https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp`.
+
+The checked-in `.mcp.json` provides the same project-scoped HTTP configuration
+for hosts that auto-discover that file.
 
 For an agent instruction layer, copy the included skill:
 
 ```bash
+# agentskills.io-compatible installer
+npx skills add Eldergenix/pyairbnb --skill pyairbnb --agent '*' --global --yes
+
 # Codex / agentskills.io hosts
 mkdir -p ~/.agents/skills
 cp -R skills/pyairbnb ~/.agents/skills/
@@ -124,7 +135,7 @@ const response = await client.responses.create({
   tools: [{
     type: "mcp",
     server_label: "pyairbnb",
-    server_url: "https://<worker-url>/mcp",
+    server_url: "https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp",
     allowed_tools: ["resolve_location", "search_stays", "get_listing_quote"],
     require_approval: "never",
   }],
@@ -147,7 +158,7 @@ response = client.beta.messages.create(
     messages=[{"role": "user", "content": "Find Tampa stays next weekend."}],
     mcp_servers=[{
         "type": "url",
-        "url": "https://<worker-url>/mcp",
+        "url": "https://pyairbnb-mcp.nexisfoundation.workers.dev/mcp",
         "name": "pyairbnb",
     }],
     tools=[{"type": "mcp_toolset", "mcp_server_name": "pyairbnb"}],
