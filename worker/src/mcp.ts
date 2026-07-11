@@ -14,6 +14,7 @@ import {
   getListingReviews,
   multiSearch,
   resolveLocation,
+  searchExperiences,
   searchFlexibleStays,
   searchStays,
 } from "./airbnb.js";
@@ -36,9 +37,11 @@ import {
   resolveLocationInputSchema,
   reviewsInputSchema,
   reviewsResultSchema,
+  searchExperiencesInputSchema,
   searchFlexibleStaysInputSchema,
   searchResultSchema,
   searchStaysInputSchema,
+  experiencesResultSchema,
 } from "./schemas.js";
 import { STAYS_WIDGET_HTML, STAYS_WIDGET_URI } from "./widget.js";
 
@@ -285,6 +288,27 @@ function registerQuoteTool(server: McpServer, ctx: ExecutionContext): void {
   );
 }
 
+function registerExperiencesTool(server: McpServer, ctx: ExecutionContext): void {
+  server.registerTool(
+    "search_experiences",
+    {
+      title: "Search Airbnb experiences",
+      description:
+        "Search bookable Airbnb experiences (activities, tours, classes) for a location, optionally bounded by dates. Unlike overnight stays, experiences are time-of-day based: filter with start_time_after/start_time_before (24-hour HH:MM) to keep only experiences starting in a window. Returns title, price per guest, rating, duration, and any listed start times.",
+      inputSchema: searchExperiencesInputSchema,
+      outputSchema: experiencesResultSchema.shape,
+      annotations: readOnlyAnnotations,
+    },
+    async (args) => {
+      const result = await searchExperiences(
+        searchExperiencesInputSchema.parse(args),
+        ctx,
+      );
+      return { structuredContent: result, content: content(result) };
+    },
+  );
+}
+
 function registerDetailsTool(server: McpServer, ctx: ExecutionContext): void {
   server.registerTool(
     "get_listing_details",
@@ -371,6 +395,7 @@ export function createMcpServer(ctx: ExecutionContext): McpServer {
   registerFlexibleSearchTool(server, ctx);
   registerMultiSearchTool(server, ctx);
   registerCompareTool(server, ctx);
+  registerExperiencesTool(server, ctx);
   registerDetailsTool(server, ctx);
   registerReviewsTool(server, ctx);
   registerHostListingsTool(server, ctx);

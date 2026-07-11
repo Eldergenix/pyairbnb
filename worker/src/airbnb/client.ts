@@ -13,6 +13,8 @@ export const REVIEWS_OPERATION_ID =
   "dec1c8061483e78373602047450322fd474e79ba9afa8d3dbbc27f504030f91d";
 export const HOST_LISTINGS_OPERATION_ID =
   "529ca816b8be0619618d48b31bf46c379543e297fd68c0a953922927e5497b43";
+export const EXPERIENCES_OPERATION_ID =
+  "fbbf9989cdf264a11fce48073008bb557f7f6b43961ccda5df6a8d988bd6ef36";
 
 export const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +

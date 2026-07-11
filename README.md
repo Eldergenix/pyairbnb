@@ -51,6 +51,7 @@ the enforceable sub-three-second lane.
 | `search_flexible_stays` | Compare bounded weekday/weekend and trip-length combinations concurrently |
 | `multi_search` | Search up to five locations concurrently and merge into one ranked, de-duplicated card list |
 | `compare_listings` | Price two to eight listings for the same dates in one call and pick the cheapest available |
+| `search_experiences` | Search bookable experiences (activities/tours) for a location, with a time-of-day filter |
 | `get_listing_details` | Full listing: description, amenities by category, house rules, host, coordinates, and photos |
 | `get_listing_reviews` | Recent guest reviews with reviewer, date, rating, text, and category breakdown |
 | `get_host_listings` | A host's other active listings by numeric host ID |
@@ -67,8 +68,11 @@ favorite count, top badges) so an agent can describe the whole set without
 paginating, and a `detail_level` (`compact`/`standard`/`full`) that shrinks the
 text payload the model reads while the widget/RSC keep the canonical data.
 
-Stay inventory is day-based. Time-of-day filtering belongs to experiences, not
-overnight stays.
+Stay inventory is day-based, so time-of-day filtering lives on
+`search_experiences` (`start_time_after`/`start_time_before`), not on stay
+searches. Airbnb's experiences search feed omits per-slot start times and
+prices (they load on the experience page); when a time filter cannot be applied,
+the tool returns all matches with a warning rather than an empty list.
 
 ## Run locally
 

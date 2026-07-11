@@ -4,6 +4,7 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
+import { normalizeExperience } from "../../worker/src/airbnb/experiences.js";
 import { computeFacets } from "../../worker/src/airbnb/facets.js";
 import {
   canonicalCacheRequest,
@@ -105,6 +106,43 @@ describe("compactTextPayload detail levels", () => {
       listings: [{ listing_id: "9", available: true }],
       nights: 2,
     });
+  });
+});
+
+describe("normalizeExperience", () => {
+  // Shape captured from a live ExperiencesSearch response.
+  const raw = {
+    __typename: "ExperienceSearchResult",
+    id: "4527793",
+    title: "Sunset Sail in Barcelona",
+    avgRatingLocalized: "4.89 (1,363)",
+    kickerText: "2 hours",
+    lat: 41.3666,
+    lng: 2.1903,
+    displayPrice: { primaryLine: { __typename: "OrderedDisplayPriceLine" } },
+    posterPictures: [{ poster: "https://a0.muscache.com/im/pictures/x.jpg" }],
+  };
+
+  it("extracts id, title, rating, review count, duration, coordinates, and photo", () => {
+    const card = normalizeExperience(raw);
+    expect(card).toMatchObject({
+      id: "4527793",
+      url: "https://www.airbnb.com/experiences/4527793",
+      title: "Sunset Sail in Barcelona",
+      rating: 4.89,
+      review_count: 1363,
+      duration: "2 hours",
+      coordinates: { latitude: 41.3666, longitude: 2.1903 },
+      photo: "https://a0.muscache.com/im/pictures/x.jpg",
+    });
+    // The search feed omits price and per-slot times.
+    expect(card?.price.amount).toBeNull();
+    expect(card?.start_times).toEqual([]);
+  });
+
+  it("rejects malformed results", () => {
+    expect(normalizeExperience({ id: "", title: "" })).toBeNull();
+    expect(normalizeExperience(null)).toBeNull();
   });
 });
 

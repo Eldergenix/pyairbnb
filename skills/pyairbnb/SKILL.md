@@ -19,6 +19,7 @@ compact; enrich only listings the user is actually considering.
 | Weekday/weekend window or several trip lengths | `search_flexible_stays` |
 | Compare several cities/neighborhoods at once | `multi_search` |
 | Price a shortlist of listings together | `compare_listings` |
+| Activities, tours, or classes (time-of-day) | `search_experiences` |
 | Full description, amenities, rules, host, photos | `get_listing_details` |
 | Guest reviews and rating breakdown | `get_listing_reviews` |
 | A host's other listings | `get_host_listings` |
@@ -32,6 +33,7 @@ Minimum argument shapes:
 - `search_flexible_stays`: the same filters plus `{earliest_check_in, latest_check_in, nights?: number[], preferred_check_in_days?: 0..6[], max_date_combinations?: 1..6}`; omit exact dates and cursor.
 - `multi_search`: `{locations: string[1..5], check_in, check_out, adults?, price_min?, price_max?, room_types?, min_rating?, sort?, per_location_limit?, limit?, detail_level?}`; returns merged `listings`, a `facets` summary, and per-`queries` provenance.
 - `compare_listings`: `{listing_ids: string[2..8], check_in, check_out, adults?, children?, infants?, pets?, currency?}`; returns per-listing price plus `cheapest_available_listing_id`.
+- `search_experiences`: `{location, check_in?, check_out?, start_time_after?: "HH:MM", start_time_before?: "HH:MM", currency?, language?, limit?, cursor?}`; returns experiences with rating, duration, and coordinates. The feed omits per-slot start times and prices, so a time filter may return all matches with a warning — open the experience page for exact schedule and price.
 - `get_listing_details`: `{listing_id, check_in?, check_out?, adults?, currency?, language?}`; add both dates to also return the price line.
 - `get_listing_reviews`: `{listing_id, limit?: 1..50, offset?, currency?, language?}`; page with `next_offset`.
 - `get_host_listings`: `{host_id, limit?: 1..50, currency?, language?}`.
@@ -70,8 +72,10 @@ shortlist, and `multi_search` over repeated `search_stays` across locations. Set
 7. Continue with `next_cursor` only when the user wants more inventory. Say
    “cheapest returned” unless pagination was exhausted.
 
-Stay searches have day-level inventory, not time-of-day inventory. Use
-time-of-day only for a separate experiences tool if one is available.
+Stay searches have day-level inventory, not time-of-day inventory. For
+time-of-day activities use `search_experiences` with `start_time_after` /
+`start_time_before`; if it warns that start times were unavailable, present the
+returned experiences and point the user to the experience page for the schedule.
 
 ## Compact result
 

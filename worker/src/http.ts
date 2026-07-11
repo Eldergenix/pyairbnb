@@ -7,6 +7,7 @@ import {
   getListingReviews,
   multiSearch,
   resolveLocation,
+  searchExperiences,
   searchFlexibleStays,
   searchStays,
 } from "./airbnb.js";
@@ -21,6 +22,7 @@ import {
   quoteInputSchema,
   resolveLocationInputSchema,
   reviewsInputSchema,
+  searchExperiencesInputSchema,
   searchFlexibleStaysInputSchema,
   searchStaysInputSchema,
 } from "./schemas.js";
@@ -153,6 +155,9 @@ export async function handleRest(
   }
   if (pathname === "/v1/stays/multi") {
     return json(await multiSearch(multiSearchInputSchema.parse(body), ctx));
+  }
+  if (pathname === "/v1/experiences/search") {
+    return json(await searchExperiences(searchExperiencesInputSchema.parse(body), ctx));
   }
   if (pathname === "/v1/listings/compare") {
     return json(await compareListings(compareListingsInputSchema.parse(body), ctx));

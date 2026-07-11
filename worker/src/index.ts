@@ -12,6 +12,7 @@ const tools = [
   "search_flexible_stays",
   "multi_search",
   "compare_listings",
+  "search_experiences",
   "get_listing_details",
   "get_listing_reviews",
   "get_host_listings",

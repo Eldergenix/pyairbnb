@@ -231,9 +231,49 @@ export const hostListingsResultSchema = z.object({
   schema_version: z.literal("1.0"),
 });
 
+export const experienceCardSchema = z.object({
+  id: z.string(),
+  url: z.string().url(),
+  title: z.string(),
+  price: z.object({
+    amount: z.number().nullable(),
+    currency: z.string(),
+    display: z.string(),
+    per_guest: z.boolean(),
+  }),
+  rating: z.number().nullable(),
+  review_count: z.number().int().nonnegative().nullable(),
+  duration: z.string(),
+  coordinates: z
+    .object({ latitude: z.number(), longitude: z.number() })
+    .nullable(),
+  start_times: z.array(z.string()),
+  categories: z.array(z.string()),
+  photo: z.string(),
+});
+
+export const experiencesResultSchema = z.object({
+  query: z.object({
+    location: z.string(),
+    check_in: z.string().nullable(),
+    check_out: z.string().nullable(),
+    currency: z.string(),
+  }),
+  experiences: z.array(experienceCardSchema),
+  next_cursor: z.string().nullable(),
+  total_returned: z.number().int().nonnegative(),
+  cache: cacheStatusSchema,
+  timing_ms: z.number().nonnegative(),
+  fetched_at: z.string(),
+  warnings: z.array(z.string()),
+  schema_version: z.literal("1.0"),
+});
+
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type FlexibleResult = z.infer<typeof flexibleResultSchema>;
 export type MultiSearchResult = z.infer<typeof multiSearchResultSchema>;
+export type ExperienceCard = z.infer<typeof experienceCardSchema>;
+export type ExperiencesResult = z.infer<typeof experiencesResultSchema>;
 export type CompareResult = z.infer<typeof compareResultSchema>;
 export type QuoteResult = z.infer<typeof quoteResultSchema>;
 export type AvailabilityResult = z.infer<typeof availabilityResultSchema>;

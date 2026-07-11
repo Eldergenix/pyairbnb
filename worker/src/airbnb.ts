@@ -4,6 +4,7 @@ export {
 } from "./airbnb/availability.js";
 export { compareListings } from "./airbnb/compare.js";
 export { getListingDetails } from "./airbnb/details.js";
+export { searchExperiences } from "./airbnb/experiences.js";
 export { computeFacets } from "./airbnb/facets.js";
 export { searchFlexibleStays, planFlexibleDates } from "./airbnb/flexible.js";
 export { getHostListings } from "./airbnb/host-listings.js";
