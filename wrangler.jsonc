@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "pyairbnb-mcp",
+  "name": "pyairbnb",
   "main": "worker/src/index.ts",
   "compatibility_date": "2026-07-10",
   "compatibility_flags": ["nodejs_compat"],
