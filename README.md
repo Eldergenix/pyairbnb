@@ -26,7 +26,10 @@ failures are negatively cached for a short window so retries fail fast, and each
 `search_stays` speculatively warms the price-quote cache for its top results so a
 follow-up `get_listing_quote` or `compare_listings` is a cache hit. Per-request
 cache status and timing are written to an Analytics Engine dataset
-(`pyairbnb_metrics`) for hit-rate and latency dashboards. Cloudflare edge limits
+(`pyairbnb_metrics`) for hit-rate and latency dashboards. An hourly Cron Trigger
+re-warms a seed list of high-traffic destinations for the upcoming weekend so
+those routes stay warm rather than falling back to a blocking cold miss.
+Cloudflare edge limits
 cap general traffic at 120 requests/minute and fan-out (flexible/multi-search) at
 20 requests/minute per caller key and colo.
 

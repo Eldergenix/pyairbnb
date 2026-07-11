@@ -6,6 +6,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { normalizeExperience } from "../../worker/src/airbnb/experiences.js";
 import { computeFacets } from "../../worker/src/airbnb/facets.js";
+import { nextWeekend } from "../../worker/src/warm.js";
 import {
   canonicalCacheRequest,
   configureCacheBindings,
@@ -105,6 +106,25 @@ describe("compactTextPayload detail levels", () => {
     expect(compactTextPayload(compare, "standard")).toMatchObject({
       listings: [{ listing_id: "9", available: true }],
       nights: 2,
+    });
+  });
+});
+
+describe("nextWeekend (cron warmer)", () => {
+  it("returns the upcoming Friday and a two-night checkout", () => {
+    // 2026-07-15 is a Wednesday; the next Friday is 2026-07-17.
+    const wed = Date.parse("2026-07-15T12:00:00Z");
+    expect(nextWeekend(wed)).toEqual({
+      check_in: "2026-07-17",
+      check_out: "2026-07-19",
+    });
+  });
+
+  it("rolls to the following Friday when called on a Friday", () => {
+    const fri = Date.parse("2026-07-17T09:00:00Z");
+    expect(nextWeekend(fri)).toEqual({
+      check_in: "2026-07-24",
+      check_out: "2026-07-26",
     });
   });
 });

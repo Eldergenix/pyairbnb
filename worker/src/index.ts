@@ -3,6 +3,7 @@ import { configureCacheBindings } from "./cache.js";
 import { PUBLIC_HEADERS, VERSION } from "./constants.js";
 import { errorResponse, handleRest, json, protectRequest } from "./http.js";
 import { createMcpServer } from "./mcp.js";
+import { warmPopularRoutes } from "./warm.js";
 
 export { compactTextPayload } from "./mcp.js";
 
@@ -74,4 +75,12 @@ async function route(
   return json({ error: "not_found" }, { status: 404 });
 }
 
-export default { fetch: route } satisfies ExportedHandler<Env>;
+async function scheduled(
+  event: ScheduledController,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<void> {
+  await warmPopularRoutes(env, ctx, event.scheduledTime);
+}
+
+export default { fetch: route, scheduled } satisfies ExportedHandler<Env>;
